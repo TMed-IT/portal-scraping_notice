@@ -10,6 +10,7 @@ import json
 
 line_notify_api = 'https://notify-api.line.me/api/notify'
 slack_webhook_url = 'https://hooks.slack.com/services/~~~'
+slack_mention_memberID = ''
 LOGINID = ""
 PASSWORD = ""
 
@@ -38,7 +39,7 @@ def log_success():
 
 
 def log_error():
-    data = {'text': 'スクリプトの実行中にエラーが発生しました',
+    data = {'text': f'<@{slack_mention_memberID}>スクリプトの実行中にエラーが発生しました',
             'username': 'ポータル更新通知'
             }
     requests.post(slack_webhook_url, data=json.dumps(data))
