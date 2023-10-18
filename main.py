@@ -38,8 +38,8 @@ def log_success():
     requests.post(slack_webhook_url, data=json.dumps(data))
 
 
-def log_error():
-    data = {'text': f'<@{slack_mention_memberID}>スクリプトの実行中にエラーが発生しました',
+def log_error(errorMessage):
+    data = {'text': f'<@{slack_mention_memberID}>{errorMessage}',
             'username': 'ポータル更新通知'
             }
     requests.post(slack_webhook_url, data=json.dumps(data))
@@ -65,7 +65,6 @@ try:
         By.XPATH, '//*[@id="T1"]/tbody/tr')
     nothing_new = True
     PATH = os.path.join(os.path.dirname(__file__), ("ScreenShot.png"))
-
     for index in range(3, len(elem_table_contents)):
         elem_table_contents = browser.find_elements(
             By.XPATH, '//*[@id="T1"]/tbody/tr')
@@ -89,5 +88,5 @@ try:
     if not nothing_new:
         os.remove(PATH)
     log_success()
-except:
-    log_error()
+except Exception as e:
+    log_error(str(e))
