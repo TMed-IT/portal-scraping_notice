@@ -31,27 +31,26 @@ now = datetime.now()
 # 実行時刻記録用ファイルのパス
 time_record_file = r"\donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
 
-# 最後に実行した時刻と現在時刻の差を出力する関数
-def take_time_margin():
+# 最後に実行した時刻を出力,記録する関数
+def check_starttime():
+    # 現在時刻を取得
+    global now 
+    now = datetime.now()
     try :
         # txtファイルに記録されている時刻と現在時刻の差を出す
         with open(time_record_file,mode="r",encoding="utf-8") as t :
             s = t.read()
             print (f"前回の実行時刻：{s}")
-            t_timedata = datetime.strptime(s,"%Y/%m/%d %H:%M:%S")
-            margin = now - t_timedata
-            total_seconds = margin.total_seconds()
-            hours_difference = total_seconds / 3600
-            print(f"前回の実行時刻と現在時刻の差は{hours_difference}時間")
+            check_start_time = datetime.strptime(s,"%Y/%m/%d %H:%M:%S")
     except :
-        hours_difference = 1 # 前回の実行時刻が取得できない場合、現在時刻から1時間前までを確認する
+        check_start_time = now - timedelta(hours=1) # 前回の実行時刻が取得できない場合、現在時刻から1時間前までを確認する
     
     finally :
         # txtファイルに現在時刻を書き込む
         with open(time_record_file,mode="w",encoding="utf-8") as f : 
             f.write(now.strftime("%Y/%m/%d %H:%M:%S"))
         
-        return hours_difference
+        return check_start_time
     
 # slackに通知 errorが1ならメンション
 def slack_notify(message,error=0):
@@ -75,8 +74,10 @@ def take_screenshot_and_send():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()),options=chrome_options)
 
     k = [] #すでに撮影したもののインデックスを保管するリスト
+    notices_count =0 #通知の数を記録しておく変数
     j = 0 #すべて撮影終了したかどうかのステータス
     shot = 0 #スクリーンショットを撮影したかどうかのステータス
+    error = 0 #エラーが生じたかどうかのステータス
     
     try:
         try:
@@ -91,6 +92,8 @@ def take_screenshot_and_send():
             print("ログインページが読み込まれました")
         except:
             slack_notify("ポータルサイトにアクセスできませんでした",1)
+            error = 1
+            return
         
         try:
             # ログイン処理
@@ -110,6 +113,8 @@ def take_screenshot_and_send():
             print("ログイン後のページが読み込まれました")
         except:
             slack_notify("ログインできませんでした",1)
+            error = 1
+            return
         
         # テーブルが存在するまで待機
         try:
@@ -120,13 +125,11 @@ def take_screenshot_and_send():
         except TimeoutException:
             print("テーブルが見つかりませんでした")
             slack_notify("テーブルが見つかりませんでした",1)
+            error = 1
             return
-        
-        # 最後に実行した時刻と現在時刻の差を代入
-        time_difference = take_time_margin() 
 
+        check_start_time = check_starttime() # 通知対象に含める期間
         current_year = now.year #今年
-        check_start_time = now - timedelta(hours=time_difference) # 通知対象に含める期間（1時間前以降だったらhours=1）
         
         Table_list = ["T1","T2","T3","T4"] # お知らせの検索をかけるテーブルのidリスト
         for table_name in Table_list :
@@ -141,6 +144,13 @@ def take_screenshot_and_send():
                 if len(notices) == 0 :
                     print(f"{table_name}には通知がありませんでした。")
                     break
+
+                # 通知の数が変わった場合、撮影済みリストをその分ずらす
+                if len(notices) != notices_count :
+                    for i,l in enumerate(k) :
+                        k[i] = l + len(notices) - notices_count
+                notices_count = len(notices)
+                print (f"撮影済みリストの中身は{k}")
 
                 for i, notice in enumerate(notices,start=1):
                     try:
@@ -173,6 +183,13 @@ def take_screenshot_and_send():
                                     WebDriverWait(driver, 10).until(
                                         EC.presence_of_element_located((By.TAG_NAME, "body"))
                                     )
+                                    # ページの幅と高さを取得
+                                    width = driver.execute_script("return document.body.scrollWidth")
+                                    height = driver.execute_script("return document.body.scrollHeight")
+                                    
+                                    # ウィンドウサイズをページのサイズに設定
+                                    driver.set_window_size(width, height)
+                                    # スクリーンショットを撮影
                                     png = driver.find_element(By.XPATH,"//table[contains(.,'おしらせ')]").screenshot_as_png
                                     with open(screenshot_path,"wb") as f :
                                         f.write(png)
@@ -239,24 +256,30 @@ def take_screenshot_and_send():
                             print("更新時刻が通知対象期間外です")
                             j = 1 # 更新時刻が通知対象期間外のお知らせは確認しない
                             break
+                        if i == len(notices):
+                            j = 1
+                            break # 最後まで確認したらbreak
 
                     # うまくいかなかったらその行をパスする
                     except (NoSuchElementException):
                         print("対象要素が見つかりません")
                         slack_notify("対象要素が見つかりませんでした。",1)
+                        error = 1
                         continue
                     except (StaleElementReferenceException):
                         print("対象要素が期限切れです")
                         slack_notify("対象要素が期限切れです。",1)
+                        error = 1
                         continue
             j = 0 # 他のテーブル用にループを再開
+            k.clear() # 撮影済みリストをクリア
             print(f"Table{table_name}を確認しました。")
 
     finally:
         driver.quit()
         print("ブラウザを閉じました")
         
-        if shot == 0 :
+        if shot == 0 and error == 0 :
             slack_notify("新規ポータル通知はありません")
             print ("ポータル通知がないことをSlackに送信しました。")
         
