@@ -31,7 +31,7 @@ now = datetime.now()
 # 実行時刻記録用ファイルのパス
 time_record_file = r"\donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
 
-# 最後に実行した時刻を出力,記録する関数
+# 最後に実行した時刻を出力する関数
 def check_starttime():
     # 現在時刻を取得
     global now 
@@ -46,10 +46,9 @@ def check_starttime():
         check_start_time = now - timedelta(hours=1) # 前回の実行時刻が取得できない場合、現在時刻から1時間前までを確認する
     
     finally :
-        # txtファイルに現在時刻を書き込む
-        with open(time_record_file,mode="w",encoding="utf-8") as f : 
-            f.write(now.strftime("%Y/%m/%d %H:%M:%S"))
-        
+        # txtファイルに現在時刻を書き込む準備
+        global donetime
+        donetime = now.strftime("%Y/%m/%d %H:%M:%S")
         return check_start_time
     
 # slackに通知 errorが1ならメンション
@@ -275,6 +274,11 @@ def take_screenshot_and_send():
             k.clear() # 撮影済みリストをクリア
             print(f"Table{table_name}を確認しました。")
 
+    except Exception as e :
+        slack_notify(f"{e.__class__.__name__}:{e}",1)
+        print(f"{e.__class__.__name__}:{e}")
+        error = 1
+
     finally:
         driver.quit()
         print("ブラウザを閉じました")
@@ -284,6 +288,9 @@ def take_screenshot_and_send():
             print ("ポータル通知がないことをSlackに送信しました。")
         
         if shot == 1 :
+            # 実行時刻を記録
+            with open(time_record_file,mode="w",encoding="utf-8") as f : 
+                f.write(donetime)
             slack_notify("ポータル通知を確認し、LINEに送信しました。")
             print ("ポータルを確認したことをSlackに送信しました。")
 
