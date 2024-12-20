@@ -26,10 +26,10 @@ mailaddress = "" # 学籍番号（mとイニシャルも含める　例:m12345a�
 password = "" # パスワード
 # 通知検索
 keywords = ["M2","全医学部生","全学","個別"] # 対象のキーワード（他の人も含む）
-# 現在時刻を取得
-now = datetime.now()
 # 実行時刻記録用ファイルのパス
 time_record_file = r"\donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
+# 健康推進センターのお知らせテキスト
+healthcenter_text = r"\健康推進センター.txt"
 
 # 最後に実行した時刻を出力する関数
 def check_starttime():
@@ -59,6 +59,33 @@ def slack_notify(message,error=0):
         print ("エラーをSlackに送信しました。")
     else:
         slack.notify(text=f"{message}",username = notification_name)
+
+# LINE Notifyに画像を送信する関数
+def LINE_Notify(token,message,image_path=None):
+    url = "https://notify-api.line.me/api/notify"
+    headers = {"Authorization": f"Bearer {token}"}
+    data = {"message": message}
+    if image_path:
+        files = {"imageFile": open(image_path, "rb")}
+        res = requests.post(url, headers=headers, data=data, files=files)
+    else:
+        res = requests.post(url, headers=headers, data=data)
+    # 送信結果を表示
+    print(res.status_code, res.json()['message'])
+    ratelimit = res.headers.get("X-RateLimit-Limit") # 1時間に可能なAPI callの上限回数を取得
+    ratelimit_remain = res.headers.get("X-RateLimit-Remaining API") # callが可能な残りの回数
+    ratelimit_imagelimit = res.headers.get("X-RateLimit-ImageLimit") #1時間に可能なImage uploadの上限回数
+    ratelimit_imageremain = res.headers.get("X-RateLimit-ImageRemaining") #Image uploadが可能な残りの回数
+    ratelimit_reset = res.headers.get("X-RateLimit-Reset") #リセットされる時刻
+    # UNIXエポック秒を datetime オブジェクトに変換
+    reset_time = datetime.fromtimestamp(int(ratelimit_reset), tz=timezone.utc)
+    # 日本時間（JST）に変換
+    jst_time = reset_time.astimezone(timezone(timedelta(hours=9)))
+    print(f"1時間に可能なAPI callの上限回数: {ratelimit}")
+    print(f"callが可能な残りの回数: {ratelimit_remain}")
+    print(f"1時間に可能なImage uploadの上限回数: {ratelimit_imagelimit}")
+    print(f"Image uploadが可能な残りの回数: {ratelimit_imageremain}")
+    print(f"リセット時刻（日本時間）: {jst_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
 # ポータル開いてお知らせ検索して、開いてスクリーンショットしてLINEnotifyに送信する関数
 def take_screenshot_and_send():
@@ -90,7 +117,7 @@ def take_screenshot_and_send():
             )
             print("ログインページが読み込まれました")
         except:
-            slack_notify("ポータルサイトにアクセスできませんでした",1)
+            slack_notify("ポータルサイトにアクセスできなかった…",1)
             error = 1
             return
         
@@ -111,7 +138,7 @@ def take_screenshot_and_send():
             )
             print("ログイン後のページが読み込まれました")
         except:
-            slack_notify("ログインできませんでした",1)
+            slack_notify("ログインできなかった…",1)
             error = 1
             return
         
@@ -123,7 +150,7 @@ def take_screenshot_and_send():
             print("テーブルが見つかりました")
         except TimeoutException:
             print("テーブルが見つかりませんでした")
-            slack_notify("テーブルが見つかりませんでした",1)
+            slack_notify("テーブルが見つからなかった…",1)
             error = 1
             return
 
@@ -175,7 +202,25 @@ def take_screenshot_and_send():
                                     link = notice.find_element(By.XPATH, ".//td[5]/a")
                                     link.click()
                                     print("通知をクリックしました")
-
+                                    
+                                    #通知内容を取得
+                                    element_text = driver.find_element(By.XPATH,"//table[contains(.,'おしらせ')]").text
+                                    if ("健康推進センター" in element_text):
+                                        if os.path.exists(healthcenter_text) :
+                                            with open(healthcenter_text,mode="r",encoding="utf-8") as t :
+                                                past_text = t.read()
+                                            if (past_text == element_text):#もし変わってなければ通知しない。
+                                                    driver.back()  # 前のページに戻る
+                                                    print("ホームに戻りました")
+                                                    # ページが読み込まれるのを待つ
+                                                    WebDriverWait(driver, 10).until(
+                                                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                                                    )
+                                                    k.append(i)
+                                                    break
+                                        #変わってたら記録を更新する
+                                        with open(healthcenter_text,mode="w",encoding="utf-8") as w : 
+                                            w.write(element_text)
                                     # スクリーンショットを撮影
                                     screenshot_path = f"portal_screenshot_{i}.png"
                                     # ページが完全に読み込まれるのを待つ
@@ -198,38 +243,15 @@ def take_screenshot_and_send():
                                     # LINE Notifyに画像を送信
                                     url = "https://notify-api.line.me/api/notify"
                                     if "個別" in target :
-                                        headers = {"Authorization": f"Bearer {LINE_NOTIFY_TOKEN_MINE}"}
+                                        LINE_Notify(LINE_NOTIFY_TOKEN_MINE,"ポータルが更新されました",screenshot_path)
+                                        shot += 2
                                     else :
-                                        headers = {"Authorization": f"Bearer {LINE_NOTIFY_TOKEN}"}
+                                        LINE_Notify(LINE_NOTIFY_TOKEN,"ポータルが更新されました",screenshot_path)
                                         shot = 1
-                                    data = {"message": "ポータルが更新されました"}
-                                    files = {"imageFile": open(screenshot_path, "rb")}
-                                    res = requests.post(url, headers=headers, data=data, files=files)
                                     print("LINEnotifyに画像を送信しました")
-
-                                    # 送信結果を表示
-                                    print(res.status_code, res.json()['message'])
-                                    ratelimit = res.headers.get("X-RateLimit-Limit") # 1時間に可能なAPI callの上限回数を取得
-                                    ratelimit_remain = res.headers.get("X-RateLimit-Remaining API") # callが可能な残りの回数
-                                    ratelimit_imagelimit = res.headers.get("X-RateLimit-ImageLimit") #1時間に可能なImage uploadの上限回数
-                                    ratelimit_imageremain = res.headers.get("X-RateLimit-ImageRemaining") #Image uploadが可能な残りの回数
-                                    ratelimit_reset = res.headers.get("X-RateLimit-Reset") #リセットされる時刻
-                                    # UNIXエポック秒を datetime オブジェクトに変換
-                                    reset_time = datetime.fromtimestamp(int(ratelimit_reset), tz=timezone.utc)
-                                    # 日本時間（JST）に変換
-                                    jst_time = reset_time.astimezone(timezone(timedelta(hours=9)))
-
-                                    print(f"1時間に可能なAPI callの上限回数: {ratelimit}")
-                                    print(f"callが可能な残りの回数: {ratelimit_remain}")
-                                    print(f"1時間に可能なImage uploadの上限回数: {ratelimit_imagelimit}")
-                                    print(f"Image uploadが可能な残りの回数: {ratelimit_imageremain}")
-                                    #print(f"リセットされる時刻: {ratelimit_reset}")
-                                    #print(f"リセット時刻（UTC）: {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                                    print(f"リセット時刻（日本時間）: {jst_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                                     
                                     # 撮影したスクリーンショットをデバイスから削除
                                     if os.path.exists(screenshot_path) :
-                                        del files
                                         os.remove(screenshot_path)
 
                                     driver.back()  # 前のページに戻る
@@ -262,14 +284,14 @@ def take_screenshot_and_send():
                     # うまくいかなかったらその行をパスする
                     except (NoSuchElementException):
                         print("対象要素が見つかりません")
-                        slack_notify("対象要素が見つかりませんでした。",1)
+                        slack_notify("対象要素が見つからなかった…",1)
                         error = 1
-                        continue
+                        break
                     except (StaleElementReferenceException):
                         print("対象要素が期限切れです")
-                        slack_notify("対象要素が期限切れです。",1)
+                        slack_notify("対象要素が期限切れだった…",1)
                         error = 1
-                        continue
+                        break
             j = 0 # 他のテーブル用にループを再開
             k.clear() # 撮影済みリストをクリア
             print(f"Table{table_name}を確認しました。")
@@ -284,15 +306,23 @@ def take_screenshot_and_send():
         print("ブラウザを閉じました")
         
         if shot == 0 and error == 0 :
-            slack_notify("新規ポータル通知はありません")
+            slack_notify("なかったよ！")
             print ("ポータル通知がないことをSlackに送信しました。")
         
-        if shot == 1 :
+        if shot == 1 or shot == 3 :
             # 実行時刻を記録
             with open(time_record_file,mode="w",encoding="utf-8") as f : 
                 f.write(donetime)
-            slack_notify("ポータル通知を確認し、LINEに送信しました。")
+            slack_notify("あったから送っておいた！")
             print ("ポータルを確認したことをSlackに送信しました。")
+
+        elif shot == 2 :
+            # 自分にだけ送信したとき
+            # 実行時刻を記録
+            with open(time_record_file,mode="w",encoding="utf-8") as f : 
+                f.write(donetime)
+            slack_notify("と・く・べ・つ♡",1)
+            print ("自分の分だけ通知があったことをSlackに送信しました。")
 
 # メインの関数を実行
 take_screenshot_and_send()
