@@ -194,7 +194,7 @@ def take_screenshot_and_send():
                         print(f"更新日時は{update_time_full}現在時刻は{now}")
                         
                         # 更新時刻が通知対象期間内であるか確認
-                        if check_start_time <= update_time_full :
+                        if check_start_time <= update_time_full and update_time_full <= now:
                             print("更新時刻が通知対象期間内です")
                             #対象のキーワードが含まれていて、撮影済みでないか確認
                             if any (keyword in target for keyword in keywords) and i not in k :
