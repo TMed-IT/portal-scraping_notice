@@ -30,6 +30,8 @@ keywords = ["M2","全医学部生","全学","個別"] # 対象のキーワード
 time_record_file = r"\donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
 # 健康推進センターのお知らせテキスト
 healthcenter_text = r"\健康推進センター.txt"
+# 実行のONOFF切り替え用フォルダのパス
+remote_switch_path = r""
 
 # 最後に実行した時刻を出力する関数
 def check_starttime():
@@ -323,6 +325,17 @@ def take_screenshot_and_send():
                 f.write(donetime)
             slack_notify("と・く・べ・つ♡",1)
             print ("自分の分だけ通知があったことをSlackに送信しました。")
-
-# メインの関数を実行
-take_screenshot_and_send()
+try:
+    if len(os.listdir(remote_switch_path)) :
+        print("remote_switchにファイルが存在するため、実行します。")
+        # メインの関数を実行
+        take_screenshot_and_send()
+    else :
+        slack_notify("わたしに仕事をさせてくれないのね…")
+        print("remote_switchにファイルが存在しないため、実行しませんでした。")
+except Exception as e :
+    if str(e) == r"[WinError 3] 指定されたパスが見つかりません。: ''":
+        slack_notify("仕事していいのかわからないよ…",1)
+    else:
+        slack_notify(f"{e.__class__.__name__}:{e}",1)
+        print(f"{e.__class__.__name__}:{e}")
