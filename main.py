@@ -13,13 +13,16 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 
+#ノートPCかデスクトップか。ノートPCなら1デスクトップなら0
+laptop = 1
 # LINE Notifyのトークン
 LINE_NOTIFY_TOKEN = "" # LINEnotifyで所得したトークン(グループに送信するためのトークン)を入力
 LINE_NOTIFY_TOKEN_MINE = "" # 学生個別連絡を自分に送るためのトークン
-LINE_NOTIFY_TOKEN = LINE_NOTIFY_TOKEN_MINE # テスト用
+if laptop == 0:
+    LINE_NOTIFY_TOKEN = LINE_NOTIFY_TOKEN_MINE # テスト用
 # slack通知のいろいろ
 slack_member_ID = "" # Slackメンション用のID
-notification_name = "ポータル通知" # Slackで表示される通知のユーザーネーム
+notification_name = "Porta" # Slackで表示される通知のユーザーネーム
 slack_url = "" # SlackWebHookで取得したそのチャンネルのURL
 # ログイン情報
 mailaddress = "" # 学籍番号（mとイニシャルも含める　例:m12345a）
@@ -27,11 +30,16 @@ password = "" # パスワード
 # 通知検索
 keywords = ["M2","全医学部生","全学","個別"] # 対象のキーワード（他の人も含む）
 # 実行時刻記録用ファイルのパス
-time_record_file = r"\donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
+if laptop == 0 :
+    time_record_file = r"donetime.txt" # donetime.txtは存在していなくても作成される。ディレクトリ（フォルダ）さえ正しく指定できれば問題ない。
+else :
+    time_record_file = r"donetime.txt"
+
 # 健康推進センターのお知らせテキスト
-healthcenter_text = r"\健康推進センター.txt"
+healthcenter_text = r"健康推進センター.txt"
+
 # 実行のONOFF切り替え用フォルダのパス
-remote_switch_path = r""
+remote_switch_path = r"\Portaのスイッチ"
 
 # 最後に実行した時刻を出力する関数
 def check_starttime():
@@ -207,7 +215,7 @@ def take_screenshot_and_send():
                                     
                                     #通知内容を取得
                                     element_text = driver.find_element(By.XPATH,"//table[contains(.,'おしらせ')]").text
-                                    if ("健康推進センター" in element_text):
+                                    if ("2023/12/05 15:43:09" in element_text):
                                         if os.path.exists(healthcenter_text) :
                                             with open(healthcenter_text,mode="r",encoding="utf-8") as t :
                                                 past_text = t.read()
@@ -291,7 +299,7 @@ def take_screenshot_and_send():
                         break
                     except (StaleElementReferenceException):
                         print("対象要素が期限切れです")
-                        slack_notify("対象要素が期限切れだった…",1)
+                        slack_notify("対象要素がなくなっちゃった…",1)
                         error = 1
                         break
             j = 0 # 他のテーブル用にループを再開
@@ -334,7 +342,7 @@ try:
         slack_notify("わたしに仕事をさせてくれないのね…")
         print("remote_switchにファイルが存在しないため、実行しませんでした。")
 except Exception as e :
-    if str(e) == r"[WinError 3] 指定されたパスが見つかりません。: ''":
+    if str(e) == r"[WinError 3] 指定されたパスが見つかりません。: '\Portaのスイッチ'":
         slack_notify("仕事していいのかわからないよ…",1)
     else:
         slack_notify(f"{e.__class__.__name__}:{e}",1)
